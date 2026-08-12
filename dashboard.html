@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard · Pulse Analytics</title>
+<meta name="description" content="Subscription analytics dashboard: MRR, churn, active subscribers and plan mix." />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="sidebar-overlay" data-sidebar-overlay></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">P</div>
+        <div class="brand-name">Pulse Analytics</div>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item" data-nav="dashboard">
+          <span>📊</span> Dashboard
+        </li>
+        <li class="nav-item" data-nav="upgrade" onclick="window.location.href='upgrade.html'">
+          <span>⬆️</span> Upgrade plan
+        </li>
+      </ul>
+      <div class="plan-badge">
+        <div class="plan-badge-label">Current plan</div>
+        <div class="plan-badge-name" data-plan-name>—</div>
+        <a href="upgrade.html" class="btn btn-secondary btn-sm" style="width:100%;">Manage plan</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="mobile-toggle" data-sidebar-toggle aria-label="Toggle menu">☰</button>
+          <div>
+            <h1>Overview</h1>
+            <div class="topbar-sub">Your subscription business at a glance</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-chip">
+            <div class="user-avatar" data-user-avatar>–</div>
+            <span data-user-name>—</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" data-logout>Log out</button>
+        </div>
+      </div>
+
+      <section class="kpi-grid" id="kpi-grid" aria-label="Key metrics"></section>
+
+      <section class="panel-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Monthly Recurring Revenue</h3>
+            <span class="panel-sub">Last 12 months</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="mrr-chart" style="width:100%; height:100%;"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Plan mix</h3>
+            <span class="panel-sub">Active MRR</span>
+          </div>
+          <div id="plan-breakdown"></div>
+        </div>
+      </section>
+
+      <section class="panel-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h3>New vs. churned customers</h3>
+            <span class="panel-sub">Last 12 months</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="churn-chart" style="width:100%; height:100%;"></canvas>
+          </div>
+          <div class="legend">
+            <span><span class="legend-dot" style="background:#22c55e;"></span>New customers</span>
+            <span><span class="legend-dot" style="background:#ef4444;"></span>Churned customers</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h3>Churn rate</h3>
+            <span class="panel-sub">Monthly</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="churn-rate-chart" style="width:100%; height:100%;"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h3>Recent subscribers</h3>
+          <span class="panel-sub" id="subscriber-count">—</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Plan</th>
+                <th>MRR</th>
+                <th>Status</th>
+                <th>Joined</th>
+              </tr>
+            </thead>
+            <tbody id="subscribers-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import { requireAuth, initShell, showToast } from './js/nav.js';
+    import { generateMonthlyMetrics, generateSubscribers, computeKpis, computePlanBreakdown } from './js/data.js';
+    import { formatCurrency, formatNumber, formatPercent, calcGrowth, escapeHtml } from './js/utils.js';
+    import { renderLineChart, renderStackedBar } from './js/charts.js';
+
+    const session = requireAuth();
+    if (session) {
+      initShell(session, 'dashboard');
+
+      const monthly = generateMonthlyMetrics();
+      const subscribers = generateSubscribers();
+      const kpis = computeKpis(monthly, subscribers);
+      const planBreakdown = computePlanBreakdown(subscribers);
+
+      renderKpis(kpis);
+      renderCharts(monthly);
+      renderPlanBreakdown(planBreakdown);
+      renderSubscriberTable(subscribers);
+
+      window.addEventListener('resize', debounce(() => renderCharts(monthly), 150));
+
+      const upgraded = new URLSearchParams(window.location.search).get('upgraded');
+      if (upgraded) showToast(`You're now on the ${escapeHtml(upgraded)} plan 🎉`);
+    }
+
+    function debounce(fn, wait) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), wait);
+      };
+    }
+
+    function deltaBadge(current, previous, invert = false) {
+      const growth = calcGrowth(current, previous);
+      const isUp = invert ? growth < 0 : growth > 0;
+      const isFlat = Math.abs(growth) < 0.001;
+      const cls = isFlat ? 'flat' : isUp ? 'up' : 'down';
+      const arrow = isFlat ? '→' : isUp ? '↑' : '↓';
+      return `<span class="kpi-delta ${cls}">${arrow} ${formatPercent(Math.abs(growth))}</span>`;
+    }
+
+    function renderKpis(kpis) {
+      const grid = document.getElementById('kpi-grid');
+      grid.innerHTML = `
+        <div class="kpi-card">
+          <div class="kpi-label">Monthly Recurring Revenue</div>
+          <div class="kpi-value">${formatCurrency(kpis.mrr, { decimals: 0 })}</div>
+          ${deltaBadge(kpis.mrr, kpis.mrrPrev)}
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Annual Run Rate</div>
+          <div class="kpi-value">${formatCurrency(kpis.arr, { decimals: 0 })}</div>
+          <span class="kpi-delta flat">projected</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Active Subscribers</div>
+          <div class="kpi-value">${formatNumber(kpis.activeSubscribers)}</div>
+          <span class="kpi-delta up">↑ ${formatNumber(kpis.newCustomers)} this month</span>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Churn Rate</div>
+          <div class="kpi-value">${formatPercent(kpis.churnRate)}</div>
+          ${deltaBadge(kpis.churnRate, kpis.churnRatePrev, true)}
+        </div>
+      `;
+    }
+
+    function renderCharts(monthly) {
+      const mrrCanvas = document.getElementById('mrr-chart');
+      renderLineChart(mrrCanvas, monthly.map((m) => ({ label: m.label, value: m.mrr })), {
+        color: '#6b7cff',
+        fill: 'rgba(107,124,255,0.15)',
+      });
+
+      const churnCanvas = document.getElementById('churn-chart');
+      renderDualBarChart(churnCanvas, monthly);
+
+      const churnRateCanvas = document.getElementById('churn-rate-chart');
+      renderLineChart(
+        churnRateCanvas,
+        monthly.map((m) => ({ label: m.label, value: +(m.churnRate * 100).toFixed(2) })),
+        { color: '#f59e0b', fill: 'rgba(245,158,11,0.15)' }
+      );
+    }
+
+    function renderDualBarChart(canvas, monthly) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(rect.width, 1);
+      const height = Math.max(rect.height, 1);
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      const paddingTop = 16;
+      const paddingBottom = 28;
+      const plotH = height - paddingTop - paddingBottom;
+      const max = Math.max(...monthly.map((m) => Math.max(m.newCustomers, m.churnedCustomers))) * 1.2 || 1;
+      const groupWidth = width / monthly.length;
+      const barWidth = Math.min(14, groupWidth / 3);
+
+      monthly.forEach((m, i) => {
+        const groupCenter = groupWidth * i + groupWidth / 2;
+        const newH = (m.newCustomers / max) * plotH;
+        const churnH = (m.churnedCustomers / max) * plotH;
+
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.roundRect(groupCenter - barWidth - 2, paddingTop + plotH - newH, barWidth, newH, 3);
+        ctx.fill();
+
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.roundRect(groupCenter + 2, paddingTop + plotH - churnH, barWidth, churnH, 3);
+        ctx.fill();
+
+        if (i % Math.ceil(monthly.length / 6) === 0 || i === monthly.length - 1) {
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.font = '11px -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(m.label, groupCenter, height - 8);
+        }
+      });
+    }
+
+    function renderPlanBreakdown(breakdown) {
+      const container = document.getElementById('plan-breakdown');
+      const barCanvasId = 'plan-mix-bar';
+      const totalMrr = breakdown.reduce((sum, p) => sum + p.mrr, 0) || 1;
+
+      container.innerHTML = `
+        <div class="chart-wrap" style="height:32px; margin-bottom:16px;">
+          <canvas id="${barCanvasId}" style="width:100%; height:100%;"></canvas>
+        </div>
+        ${breakdown
+          .map(
+            (p) => `
+          <div class="plan-row">
+            <span class="plan-row-name">
+              <span class="legend-dot" style="background:${p.color};"></span>
+              ${escapeHtml(p.name)} · ${formatNumber(p.subscribers)} subs
+            </span>
+            <span class="plan-row-mrr">${formatCurrency(p.mrr, { decimals: 0 })}
+              <span style="color:var(--text-faint); font-weight:400;">(${formatPercent(p.mrr / totalMrr)})</span>
+            </span>
+          </div>`
+          )
+          .join('')}
+      `;
+
+      renderStackedBar(
+        document.getElementById(barCanvasId),
+        breakdown.map((p) => ({ value: p.mrr, color: p.color }))
+      );
+    }
+
+    function renderSubscriberTable(subscribers) {
+      const body = document.getElementById('subscribers-body');
+      const sorted = [...subscribers].sort((a, b) => new Date(b.joinedAt) - new Date(a.joinedAt)).slice(0, 10);
+      document.getElementById('subscriber-count').textContent = `${formatNumber(subscribers.length)} total`;
+
+      body.innerHTML = sorted
+        .map(
+          (s) => `
+        <tr>
+          <td>${escapeHtml(s.name)}</td>
+          <td>${escapeHtml(s.email)}</td>
+          <td>${escapeHtml(s.planName)}</td>
+          <td>${formatCurrency(s.mrr, { decimals: 0 })}</td>
+          <td><span class="status-pill ${s.status}">${escapeHtml(s.status.replace('_', ' '))}</span></td>
+          <td>${new Date(s.joinedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+        </tr>`
+        )
+        .join('');
+    }
+  </script>
+</body>
+</html>

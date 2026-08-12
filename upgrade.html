@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Upgrade plan · Pulse Analytics</title>
+<meta name="description" content="Choose a plan for your Pulse Analytics account." />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="sidebar-overlay" data-sidebar-overlay></div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">P</div>
+        <div class="brand-name">Pulse Analytics</div>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item" data-nav="dashboard" onclick="window.location.href='dashboard.html'">
+          <span>📊</span> Dashboard
+        </li>
+        <li class="nav-item" data-nav="upgrade">
+          <span>⬆️</span> Upgrade plan
+        </li>
+      </ul>
+      <div class="plan-badge">
+        <div class="plan-badge-label">Current plan</div>
+        <div class="plan-badge-name" data-plan-name>—</div>
+        <a href="dashboard.html" class="btn btn-secondary btn-sm" style="width:100%;">Back to dashboard</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="mobile-toggle" data-sidebar-toggle aria-label="Toggle menu">☰</button>
+          <div>
+            <h1>Choose your plan</h1>
+            <div class="topbar-sub">Upgrade or downgrade at any time — no commitments.</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="user-chip">
+            <div class="user-avatar" data-user-avatar>–</div>
+            <span data-user-name>—</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" data-logout>Log out</button>
+        </div>
+      </div>
+
+      <section class="pricing-grid" id="pricing-grid" aria-label="Pricing plans"></section>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="confirm-overlay">
+    <div class="modal">
+      <div class="modal-icon">?</div>
+      <h3 id="confirm-title">Confirm plan change</h3>
+      <p id="confirm-body">Are you sure you want to switch plans?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-primary" id="confirm-accept">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="success-overlay">
+    <div class="modal">
+      <div class="modal-icon">✓</div>
+      <h3>Plan updated</h3>
+      <p id="success-body">Your plan has been changed.</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="success-continue">Go to dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { requireAuth, initShell } from './js/nav.js';
+    import { getPlans } from './js/data.js';
+    import { upgradePlan } from './js/auth.js';
+    import { formatCurrency, escapeHtml } from './js/utils.js';
+
+    const session = requireAuth();
+    if (session) {
+      initShell(session, 'upgrade');
+      const plans = getPlans();
+      let pendingPlan = null;
+
+      const grid = document.getElementById('pricing-grid');
+      const featureMap = {
+        starter: ['Up to 100 subscribers', 'Core MRR & churn metrics', 'Email support'],
+        growth: ['Up to 1,000 subscribers', 'Full analytics suite', 'Plan-mix breakdown', 'Priority email support'],
+        scale: ['Up to 10,000 subscribers', 'Cohort & retention insights', 'CSV exports', 'Chat support'],
+        enterprise: ['Unlimited subscribers', 'Custom reporting', 'Dedicated success manager', 'SSO & audit logs'],
+      };
+
+      function render() {
+        grid.innerHTML = plans
+          .map((plan) => {
+            const isCurrent = plan.id === session.plan;
+            const isPopular = plan.id === 'growth' && !isCurrent;
+            return `
+            <div class="price-card ${isCurrent ? 'current' : ''} ${isPopular ? 'popular' : ''}">
+              <h3>${escapeHtml(plan.name)}</h3>
+              <div class="price-amount">${formatCurrency(plan.price, { decimals: 0 })}<span>/mo</span></div>
+              <ul class="price-features">
+                ${(featureMap[plan.id] || []).map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
+              </ul>
+              ${
+                isCurrent
+                  ? '<div class="current-tag">✓ Current plan</div>'
+                  : `<button class="btn btn-primary" data-plan-select="${plan.id}">Choose ${escapeHtml(plan.name)}</button>`
+              }
+            </div>`;
+          })
+          .join('');
+
+        grid.querySelectorAll('[data-plan-select]').forEach((btn) => {
+          btn.addEventListener('click', () => openConfirm(btn.getAttribute('data-plan-select')));
+        });
+      }
+
+      function openConfirm(planId) {
+        pendingPlan = plans.find((p) => p.id === planId);
+        if (!pendingPlan) return;
+        document.getElementById('confirm-body').textContent =
+          `You're switching to the ${pendingPlan.name} plan at ${formatCurrency(pendingPlan.price, { decimals: 0 })}/mo. This is a demo — no payment will be charged.`;
+        document.getElementById('confirm-overlay').classList.add('visible');
+      }
+
+      document.getElementById('confirm-cancel').addEventListener('click', () => {
+        pendingPlan = null;
+        document.getElementById('confirm-overlay').classList.remove('visible');
+      });
+
+      document.getElementById('confirm-accept').addEventListener('click', () => {
+        if (!pendingPlan) return;
+        const acceptBtn = document.getElementById('confirm-accept');
+        acceptBtn.disabled = true;
+        acceptBtn.textContent = 'Processing…';
+
+        // Simulate a brief checkout/payment step before committing the upgrade.
+        setTimeout(() => {
+          try {
+            const updatedSession = upgradePlan(pendingPlan.id);
+            session.plan = updatedSession.plan;
+            document.getElementById('confirm-overlay').classList.remove('visible');
+            document.getElementById('success-body').textContent =
+              `You're now on the ${pendingPlan.name} plan. Redirecting to your dashboard…`;
+            document.getElementById('success-overlay').classList.add('visible');
+            render();
+            initShell(session, 'upgrade');
+          } finally {
+            acceptBtn.disabled = false;
+            acceptBtn.textContent = 'Confirm';
+          }
+        }, 600);
+      });
+
+      document.getElementById('success-continue').addEventListener('click', () => {
+        window.location.href = `dashboard.html?upgraded=${encodeURIComponent(pendingPlan ? pendingPlan.name : '')}`;
+      });
+
+      render();
+    }
+  </script>
+</body>
+</html>
