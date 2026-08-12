@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign up · Pulse Analytics</title>
+<meta name="description" content="Create your Pulse Analytics account." />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-mark">P</div>
+      <div class="brand-name">Pulse Analytics</div>
+    </div>
+    <h1>Create your account</h1>
+    <p class="auth-subtitle">Start tracking your subscription metrics in minutes.</p>
+
+    <div class="form-alert" id="form-alert" role="alert"></div>
+
+    <form id="signup-form" novalidate>
+      <div class="field">
+        <label for="name">Full name</label>
+        <input type="text" id="name" name="name" autocomplete="name" placeholder="Jane Doe" required />
+        <div class="field-error" id="name-error"></div>
+      </div>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="email" placeholder="you@company.com" required />
+        <div class="field-error" id="email-error"></div>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="new-password" placeholder="At least 8 characters" required />
+        <div class="field-error" id="password-error"></div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="submit-btn">Create account</button>
+    </form>
+
+    <div class="auth-footer">
+      Already have an account? <a href="index.html">Log in</a>
+    </div>
+  </div>
+
+  <script type="module">
+    import { signup, AuthError, isAuthenticated } from './js/auth.js';
+    import { isValidEmail, isValidPassword } from './js/utils.js';
+
+    if (isAuthenticated()) {
+      window.location.href = 'dashboard.html';
+    }
+
+    const form = document.getElementById('signup-form');
+    const alertBox = document.getElementById('form-alert');
+    const submitBtn = document.getElementById('submit-btn');
+    const nameInput = document.getElementById('name');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const passwordError = document.getElementById('password-error');
+
+    function clearErrors() {
+      alertBox.classList.remove('visible', 'success');
+      alertBox.textContent = '';
+      [nameInput, emailInput, passwordInput].forEach((el) => el.classList.remove('invalid'));
+      passwordError.textContent = '';
+    }
+
+    function showAlert(message) {
+      alertBox.textContent = message;
+      alertBox.classList.add('visible');
+    }
+
+    passwordInput.addEventListener('input', () => {
+      if (passwordInput.value && !isValidPassword(passwordInput.value)) {
+        passwordError.textContent = 'Min 8 characters, with a letter and a number.';
+      } else {
+        passwordError.textContent = '';
+      }
+    });
+
+    emailInput.addEventListener('blur', () => {
+      emailInput.classList.toggle('invalid', emailInput.value.length > 0 && !isValidEmail(emailInput.value));
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clearErrors();
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account…';
+
+      try {
+        signup({ name: nameInput.value, email: emailInput.value, password: passwordInput.value });
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        if (err instanceof AuthError) {
+          showAlert(err.message);
+        } else {
+          showAlert('Something went wrong. Please try again.');
+          console.error(err);
+        }
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create account';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "subscription-analytics-mvp",
+  "version": "1.0.0",
+  "description": "Subscription analytics MVP dashboard with auth, sample data, and upgrade flow",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "http-server -p 8080 -c-1 .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node tests/e2e/smoke.mjs"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "jsdom": "^25.0.1",
+    "puppeteer-core": "^24.43.1",
+    "vitest": "^2.1.4"
+  }
+}
